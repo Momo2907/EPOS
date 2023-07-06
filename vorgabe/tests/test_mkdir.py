@@ -69,3 +69,37 @@ class Test_Mkdir:
             assert fs.inodes[i].name.decode("utf-8") =="" 
             assert fs.inodes[i].n_type == 3 # meaning it is marked as free block
 
+    def test_mkdir_duplicate_name(self):
+        fs = setup(5)
+        retval = libc.fs_mkdir(ctypes.byref(fs), ctypes.c_char_p(bytes("/testDirectory", "UTF-8")))
+        assert retval == 0
+        retval = libc.fs_mkdir(ctypes.byref(fs), ctypes.c_char_p(bytes("/testDirectory", "UTF-8")))
+        assert retval == -2
+        assert fs.inodes[1].name.decode("utf-8") =="testDirectory","UTF-8" 
+        assert fs.inodes[1].n_type == 2 # meaning it is marked as directory
+        assert fs.inodes[0].direct_blocks[0] == 1 #fs.inodes[0] is the root node. its first direct block should point to the 1st inode (where the new dir is located)
+        assert fs.inodes[1].parent == 0
+        assert fs.inodes[2].name.decode("utf-8") == ""
+        assert fs.inodes[2].n_type == 3
+        assert fs.inodes[2].parent == -1
+        assert fs.inodes[0].direct_blocks[1] == -1
+
+    def test_mkdir_duplicate_nested(self):
+        fs = setup(5)
+        retval = libc.fs_mkdir(ctypes.byref(fs), ctypes.c_char_p(bytes("/testDirectory","UTF-8"))) #new dir located at inode 1
+        assert retval == 0
+        retval = libc.fs_mkdir(ctypes.byref(fs), ctypes.c_char_p(bytes("/testDirectory/testNest","UTF-8"))) #new dir located at inode 2
+        assert retval == 0
+        retval = libc.fs_mkdir(ctypes.byref(fs), ctypes.c_char_p(bytes("/testDirectory/testNest","UTF-8"))) #would be located at inode 3
+        assert retval == -2
+        assert fs.inodes[1].name.decode("utf-8") == "testDirectory","UTF-8" 
+        assert fs.inodes[1].n_type == 2 # meaning it is marked as directory
+        assert fs.inodes[1].direct_blocks[0] == 2 # meaning it is marked as directory
+        assert fs.inodes[1].parent == 0
+        assert fs.inodes[2].name.decode("utf-8") == "testNest","UTF-8" 
+        assert fs.inodes[2].n_type == 2 # meaning it is marked as directory
+        assert fs.inodes[2].parent == 1
+        assert fs.inodes[3].name.decode("utf-8") == ""
+        assert fs.inodes[3].n_type == 3
+        assert fs.inodes[3].parent == -1
+        assert fs.inodes[1].direct_blocks[1] == -1

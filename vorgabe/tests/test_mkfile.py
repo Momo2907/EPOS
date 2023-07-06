@@ -68,3 +68,37 @@ class Test_Mkfile:
             assert fs.inodes[i].name.decode("utf-8") =="" 
             assert fs.inodes[i].n_type == 3 # meaning it is marked as free block
 
+    def test_mkfile_duplicate(self):
+        fs = setup(5)
+        retval = libc.fs_mkfile(ctypes.byref(fs), ctypes.c_char_p(bytes("/testFile","UTF-8")))
+        assert retval == 0
+        retval = libc.fs_mkfile(ctypes.byref(fs), ctypes.c_char_p(bytes("/testFile","UTF-8")))
+        assert retval == -2
+        assert fs.inodes[1].n_type == 1 # meaning it is marked as regular file
+        assert fs.inodes[1].name.decode("utf-8") =="testFile" 
+        assert fs.inodes[0].direct_blocks[0] == 1 #fs.inodes[0] is the root node. its first direct block should point to the 1st inode (where the new file is located)
+        assert fs.inodes[1].parent == 0
+        assert fs.inodes[2].name.decode("utf-8") == ""
+        assert fs.inodes[2].n_type == 3 
+        assert fs.inodes[2].parent == -1
+        assert fs.inodes[0].direct_blocks[1] == -1
+    
+    def test_mkfile_nested_duplicate(self):
+        fs = setup(5)
+        #setting up a directory
+        fs = set_dir(name="newDir",inode=1,parent=0,parent_block=0,fs=fs)
+
+        # the actual test
+        retval = libc.fs_mkfile(ctypes.byref(fs), ctypes.c_char_p(bytes("/newDir/newFile","UTF-8")))
+        assert retval == 0
+        retval = libc.fs_mkfile(ctypes.byref(fs), ctypes.c_char_p(bytes("/newDir/newFile","UTF-8")))
+        assert retval == -2
+        assert fs.inodes[2].n_type == 1 # meaning it is marked as regular file
+        assert fs.inodes[2].name.decode("utf-8") == "newFile" 
+        assert fs.inodes[1].direct_blocks[0] == 2 #fs.inodes[1] is the node of /newDir. Its direct block [0] should point to the inode[2] (where the new file is located)
+        assert fs.inodes[1].parent == 0
+        assert fs.inodes[2].parent == 1
+        assert fs.inodes[3].name.decode("utf-8") == ""
+        assert fs.inodes[3].n_type == 3
+        assert fs.inodes[3].parent == -1
+        assert fs.inodes[1].direct_blocks[1] == -1
